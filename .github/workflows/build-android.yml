@@ -37,8 +37,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/jarvis-source"
           unzip -q jarvis-android-apk-build-ready.zip -d "$RUNNER_TEMP/jarvis-source"
           echo "Archive contents:"
-          find "$RUNNER_TEMP/jarvis-source" -maxdepth 4 -type f | sort | head -200
-          PROJECT_DIR="$(find "$RUNNER_TEMP/jarvis-source" -name settings.gradle.kts -o -name settings.gradle | head -1 | xargs -r dirname)"
+          find "$RUNNER_TEMP/jarvis-source" -maxdepth 5 -type f | sort | head -200
+          PROJECT_DIR="$(find "$RUNNER_TEMP/jarvis-source" -type f \\( -name settings.gradle.kts -o -name settings.gradle \\) -print -quit | xargs -r dirname)"
           if [ -z "$PROJECT_DIR" ]; then
             echo "::error::No Gradle settings file was found in the uploaded archive."
             exit 1
@@ -58,10 +58,24 @@ jobs:
             gradle --no-daemon assembleDebug
           fi
 
+      - name: Collect debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          find "$PROJECT_DIR" -type f -path "*/build/outputs/apk/debug/*.apk" -exec cp {} "$GITHUB_WORKSPACE/artifacts/" \\;
+          if ! compgen -G "$GITHUB_WORKSPACE/artifacts/*.apk" > /dev/null; then
+            echo "::error::Gradle completed but no debug APK was found under $PROJECT_DIR."
+            echo "APK-related files:"
+            find "$PROJECT_DIR" -type f | grep -E '\\.apk$|outputs/apk' || true
+            exit 1
+          fi
+          ls -lh "$GITHUB_WORKSPACE/artifacts"
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: jarvis-android-debug-apk
-          path: "**/build/outputs/apk/debug/*.apk"
+          path: artifacts/*.apk
           if-no-files-found: error
           retention-days: 14
